@@ -10,7 +10,7 @@ interface GarageDoorProps {
 
 export function GarageDoor({ name, isOpen, isLoading, onToggle }: GarageDoorProps) {
   return (
-    <div className="bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-700">
+    <div className="bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-700 w-[35vmax] m-[2vmin]">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold text-gray-100">{name}</h2>
         <span

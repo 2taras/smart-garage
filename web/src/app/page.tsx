@@ -1,169 +1,136 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-
+import { useRouter } from 'next/navigation';
 import { GarageDoor } from './components/garage_door';
+import { TempOutput } from './components/temp_sensor';
+import { getGarages, controlGarage, getCurrentUser } from './api';
+import { Garage, User } from './types';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
-import axios from 'axios'
-
-interface GarageData {
-  isOpen: boolean;
-  temperature: number;
-  lightStatus: boolean;
-  lastActivity: string;
-}
-
-const Page = () => {
-  const [garageData, setGarageData] = useState<GarageData>({
-    isOpen: false,
-    temperature: 20,
-    lightStatus: false,
-    lastActivity: new Date().toLocaleString(),
-  });
-
-  const [loading, setLoading] = useState<boolean>(false);
-
-  const [dooropen, setDooropen] = useState<boolean>(false);
+export default function Page() {
+  const [garages, setGarages] = useState<Garage[]>([]);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
-    const fetchGarageData = async () => {
-      setLoading(true);
+    const checkAuth = async () => {
       try {
-        const apiUrl = 'http://www.filltext.com/?rows=32&id={number|1000}&firstName={firstName}&lastName={lastName}&email={email}&phone={phone|(xxx)xxx-xx-xx}&address={addressObject}&description={lorem|32}';
-        axios.get(apiUrl).then((resp) => {
-        setGarageData(prevData => ({
-          ...prevData,
-          temperature: Math.floor(Math.random() * 10) + 18,
-        }));
-        })
+        const userData = await getCurrentUser();
+        setUser(userData);
+        fetchGarages();
       } catch (error) {
-        console.error('Error fetching garage data:', error);
-      } finally {
-        setLoading(false);
+        router.push('/auth/telegram');
       }
     };
 
-    fetchGarageData();
-    const interval = setInterval(fetchGarageData, 60000);
+    checkAuth();
+  }, [router]);
 
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleToggleDoor = async () => {
-    setLoading(true);
+  const fetchGarages = async () => {
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setGarageData(prevData => ({
-        ...prevData,
-        isOpen: !prevData.isOpen,
-        lastActivity: new Date().toLocaleString(),
-      }));
-    } catch (error) {
-      console.error('Error toggling door:', error);
+      const garageData = await getGarages();
+      setGarages(garageData);
+      setError(null);
+    } catch (err) {
+      setError('Failed to fetch garage data');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleToggleLight = async () => {
+  const handleToggleDoor = async (garage: Garage) => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setGarageData(prevData => ({
-        ...prevData,
-        lightStatus: !prevData.lightStatus,
-        lastActivity: new Date().toLocaleString(),
-      }));
+      const action = garage.current_state === 'closed' ? 'open' : 'close';
+      await controlGarage(garage.id, action);
+      await fetchGarages(); // Refresh data
     } catch (error) {
-      console.error('Error toggling light:', error);
     } finally {
       setLoading(false);
     }
   };
+
+  if (!user) {
+    return null; // Or loading spinner
+  }
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <header className="text-center mb-10">
-        <h1 className="text-4xl font-bold text-gray-800">Smart Garage Control</h1>
-      </header>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto p-6">
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-2xl">Smart Garage Control</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-sm text-gray-500">
+              Welcome, {user.username}
+            </div>
+          </CardContent>
+        </Card>
 
-      {/* Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        {/* Garage Door Status */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-2">Garage Door</h2>
-          <div className={`text-lg font-medium ${garageData.isOpen ? 'text-green-500' : 'text-red-500'}`}>
-            {garageData.isOpen ? 'Open' : 'Closed'}
-          </div>
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {garages.map((garage) => (
+            <Card key={garage.id} className="relative">
+              <CardHeader>
+                <CardTitle>{garage.name}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <GarageDoor
+                    isOpen={garage.current_state === 'open' || garage.current_state === 'opening'}
+                    isLoading={loading}
+                    onToggle={() => handleToggleDoor(garage)}
+                  />
+                  {garage.temperature && (
+                    <TempOutput
+                      name={`${garage.name} Temperature`}
+                      currentTemp={garage.temperature}
+                      targetTemp={21}
+                    />
+                  )}
+                  <div className="text-sm text-gray-500">
+                    Status: {garage.current_state}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
-        {/* Temperature */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-2">Temperature</h2>
-          <div className="text-lg font-medium text-blue-500">
-            {garageData.temperature}°C
-          </div>
-        </div>
-
-        {/* Light Status */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-2">Lights</h2>
-          <div className={`text-lg font-medium ${garageData.lightStatus ? 'text-yellow-500' : 'text-gray-500'}`}>
-            {garageData.lightStatus ? 'On' : 'Off'}
-          </div>
-        </div>
-      </div>
-
-      {/* Control Buttons */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <button
-          onClick={handleToggleDoor}
-          disabled={loading}
-          className={`p-4 rounded-lg text-white font-medium transition-colors
-            ${loading 
-              ? 'bg-gray-400 cursor-not-allowed' 
-              : 'bg-blue-500 hover:bg-blue-600'}`}
-        >
-          {garageData.isOpen ? 'Close Garage Door' : 'Open Garage Door'}
-        </button>
-
-        <button
-          onClick={handleToggleLight}
-          disabled={loading}
-          className={`p-4 rounded-lg text-white font-medium transition-colors
-            ${loading 
-              ? 'bg-gray-400 cursor-not-allowed' 
-              : 'bg-yellow-500 hover:bg-yellow-600'}`}
-        >
-          {garageData.lightStatus ? 'Turn Off Lights' : 'Turn On Lights'}
-        </button>
-      </div>
-
-      {/* Activity Log */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-semibold mb-4">Recent Activity</h2>
-        <div className="text-gray-600">
-          Last activity: {garageData.lastActivity}
+        <div className="mt-6 flex justify-center">
+          <Button
+            onClick={fetchGarages}
+            disabled={loading}
+          >
+            {loading ? "Refreshing..." : "Refresh Status"}
+          </Button>
         </div>
       </div>
 
-      <GarageDoor
-        isOpen={dooropen}
-        isLoading={false}
-        onToggle={() => setDooropen(!dooropen)}
-      />
-
-      {/* Loading Indicator */}
       {loading && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-4 rounded-lg shadow-lg">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Loading...</p>
-          </div>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center">
+          <Card className="w-[300px]">
+            <CardContent className="pt-6">
+              <div className="flex flex-col items-center space-y-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <p className="text-sm text-gray-500">Loading...</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>
   );
-};
-
-export default Page;
+}
