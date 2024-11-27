@@ -2,3 +2,5 @@ server/.venv
 tg/.venv
 build
 server/src/.env
+server/alembic.ini
+*.pyc

@@ -6,7 +6,8 @@ from app.core.security import get_current_user
 from app.schemas import garage as garage_schemas
 from app.crud import crud_garage, crud_access_log
 from app.db.session import get_db
-from app.websockets.manager import ws_manager
+from app.websockets.manager import WebSocketManager
+from app.schemas import user as user_schemas
 
 router = APIRouter()
 
@@ -64,7 +65,7 @@ async def control_garage(
         raise HTTPException(status_code=403, detail="Not enough permissions")
     
     # Send command to ESP32 through WebSocket
-    success = await ws_manager.send_command(garage.esp32_identifier, command.action)
+    success = await WebSocketManager.send_command(garage.esp32_identifier, command.action)
     
     # Log the action
     crud_access_log.create(

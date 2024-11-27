@@ -5,7 +5,7 @@ from typing import Any
 from app.core import security
 from app.core.security import get_current_user
 from app.schemas import user as user_schemas
-from app.crud import crud_user
+from app.crud.crud_user import crud_user
 from app.db.session import get_db
 
 router = APIRouter()
