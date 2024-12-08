@@ -1,0 +1,29 @@
+dependencies:
+  espressif/esp_websocket_client:
+    component_hash: 8280960def8af4f84bc58d2d76f55357cd1387775cbc2e0a6b3ca229aa7e209e
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.3.0
+  idf:
+    source:
+      type: idf
+    version: 5.3.1
+  zorxx/dht:
+    component_hash: 6a5e699b15509d99b90352694e23beb6646855486eb3bafefd1d50058d474e98
+    dependencies: []
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.0.1
+direct_dependencies:
+- espressif/esp_websocket_client
+- idf
+- zorxx/dht
+manifest_hash: 791a01d016c390d77f58856f2ad18d0b6aab78b34356c33557ba2b4838bd5fe6
+target: esp32s2
+version: 2.0.0

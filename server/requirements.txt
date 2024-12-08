@@ -1,0 +1,8 @@
+python-telegram-bot
+sqlalchemy
+cryptography
+requests
+aiofiles
+aiohttp
+jinja2==3.0.3
+python-dotenv
