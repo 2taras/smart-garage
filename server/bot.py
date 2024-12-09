@@ -10,6 +10,10 @@ from typing import Optional
 import json
 from misc.garageapi import GarageAPI
 from misc.db import get_db, User, SystemConfig, Log
+from misc.bankapi import AsyncBankClient, PaymentRequest, PaymentResponse
+from misc.config_manager import ConfigManager
+from misc.utils import distance
+from misc.models import LocationData, LoginData, PurchaseData
 
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
@@ -27,20 +31,14 @@ logger = logging.getLogger(__name__)
 # Constants
 API_TOKEN = os.getenv("API_TOKEN")
 GARAGE_LOCATION = json.loads(os.getenv("GARAGE_LOCATION"))
+GARAGE_PRICE = float(os.getenv("GARAGE_PRICE", "100.0"))
 
-def distance(lat1: float, lon1: float, lat2: float, lon2: float, unit: str = "K") -> float:
-    if lat1 == lat2 and lon1 == lon2:
-        return 0
-    
-    theta = lon1 - lon2
-    dist = (math.sin(math.radians(lat1)) * math.sin(math.radians(lat2)) + 
-           math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * 
-           math.cos(math.radians(theta)))
-    dist = math.acos(dist)
-    dist = math.degrees(dist)
-    miles = dist * 60 * 1.1515
-    
-    return miles * 1.609344 if unit == "K" else miles * 0.8684 if unit == "N" else miles
+def get_start_keyboard(is_available: bool = True) -> ReplyKeyboardMarkup:
+    buttons = [
+        [KeyboardButton("Купить гараж")] if is_available else [],
+        [KeyboardButton("Ввести пароль")]
+    ]
+    return ReplyKeyboardMarkup(buttons, resize_keyboard=True)
 
 def get_main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup([
@@ -52,36 +50,6 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
 def get_location_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup([[KeyboardButton("Переключить", request_location=True)]], 
                               resize_keyboard=True, one_time_keyboard=True)
-
-class ConfigManager:
-    @staticmethod
-    def get_value(db: Session, key: str) -> Optional[str]:
-        config = db.query(SystemConfig).filter_by(key=key).first()
-        return config.value if config else None
-
-    @staticmethod
-    def set_value(db: Session, key: str, value: str):
-        config = db.query(SystemConfig).filter_by(key=key).first()
-        if config:
-            config.value = value
-        else:
-            config = SystemConfig(key=key, value=value)
-            db.add(config)
-        db.commit()
-
-    @staticmethod
-    def get_temp_password(db: Session) -> str:
-        password = ConfigManager.get_value(db, 'temp_password')
-        if not password:
-            password = str(random.randint(1000, 9999))
-            ConfigManager.set_value(db, 'temp_password', password)
-        return password
-
-    @staticmethod
-    def reset_temp_password(db: Session) -> str:
-        new_password = str(random.randint(1000, 9999))
-        ConfigManager.set_value(db, 'temp_password', new_password)
-        return new_password
 
 class GarageBot:
     def __init__(self):
@@ -105,10 +73,18 @@ class GarageBot:
             db.add(user)
             db.commit()
         
-        if not user.is_auth:
-            await update.message.reply_text("Введи пароль")
+        if user.is_owner and user.is_auth:
+            await update.message.reply_text(
+                "Добро пожаловать в панель управления!", 
+                reply_markup=get_main_keyboard()
+            )
         else:
-            await update.message.reply_text("Добро пожаловать!", reply_markup=get_main_keyboard())
+            await update.message.reply_text(
+                "🏠 Гараж-бот\n\n" +
+                ("🔑 Авторизуйтесь с помощью пароля\n"
+                 f"🏷 Гараж доступен к покупке за {GARAGE_PRICE} &$%&\n"),
+                reply_markup=get_start_keyboard()
+            )
 
     async def get_garage_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
@@ -166,30 +142,131 @@ class GarageBot:
         db = next(get_db())
         user = db.query(User).get(user_id)
 
-        if not user.is_auth:
-            await self.check_password(update, context, text)
+        # Если у пользователя есть текущая итерация (ожидание ввода карты)
+        if user and user.current_itern == 'awaiting_card':
+            user.current_itern = ''
+            db.commit()
+            await self.handle_card_input(update, user)
             return
 
-        if text == "Пароль":
-            current_pass = ConfigManager.get_temp_password(db)
+        if text == "Купить гараж":
             await update.message.reply_text(
-                f"Пароль: {current_pass}\n"
-                f"https://t.me/new_garage_opener_Bot?start={current_pass}",
-                reply_markup=get_main_keyboard()
+                f"💳 Для покупки гаража введите номер карты (16 цифр).\n"
+                f"💰 Стоимость: {GARAGE_PRICE} руб."
             )
-        elif text == "Статус":  # New condition
-            await self.get_garage_status(update, context)
-        elif text in ["Открыть", "Закрыть"]:
-            command_map = {
-                "Открыть": "left",
-                "Закрыть": "right"
-            }
-            user.current_itern = command_map[text]
+            user.current_itern = 'awaiting_card'
             db.commit()
-            await update.message.reply_text(
-                "Нажмите кнопку для действия",
-                reply_markup=get_location_keyboard()
-            )
+            return
+            
+        if text == "Ввести пароль":
+            await update.message.reply_text("Введите пароль:")
+            return
+            
+        if user and user.is_auth:
+            # Handle main keyboard commands
+            if text == "Статус":
+                await self.get_garage_status(update, context)
+            elif text == "Пароль":
+                current_pass = ConfigManager.get_temp_password(db)
+                await update.message.reply_text(
+                    f"Пароль: {current_pass}\n"
+                    f"https://t.me/new_garage_opener_Bot?start={current_pass}",
+                    reply_markup=get_main_keyboard()
+                )
+            elif text in ["Открыть", "Закрыть"]:
+                command_map = {
+                    "Открыть": "left",
+                    "Закрыть": "right"
+                }
+                user.current_itern = command_map[text]
+                db.commit()
+                await update.message.reply_text(
+                    "Нажмите кнопку для действия",
+                    reply_markup=get_location_keyboard()
+                )
+        else:
+            # Try to authenticate with password
+            current_pass = ConfigManager.get_temp_password(db)
+            if text == current_pass:
+                user.is_auth = True
+                db.commit()
+                ConfigManager.reset_temp_password(db)
+                await update.message.reply_text(
+                    "Доступ разрешен", 
+                    reply_markup=get_main_keyboard()
+                )
+            else:
+                await update.message.reply_text(
+                    "❌ Неверный пароль",
+                    reply_markup=get_start_keyboard()
+                )
+
+    async def handle_card_input(self, update: Update, user: User):
+            db = next(get_db())
+            card_number = update.message.text
+
+            if not card_number.isdigit() or len(card_number) != 16:
+                await update.message.reply_text("❌ Неверный формат карты")
+                return
+
+            await update.message.delete()  # Delete card number for security
+            user_id = update.effective_user.id
+            
+            try:
+                payment = PaymentRequest(
+                    amount=GARAGE_PRICE,
+                    card_number=card_number,
+                    description=f"Garage purchase by user {user_id}"
+                )
+                
+                # Создаем новый экземпляр клиента для каждой транзакции
+                client = AsyncBankClient()
+                async with client as bank:
+                    response = await bank.process_payment(payment)
+                
+                if response.status == "success":
+                    # Remove all old users
+                    db.query(User).delete()
+                    db.commit()
+                    
+                    # Create new owner
+                    new_owner = User(
+                        id=user_id,
+                        is_owner=True,
+                        is_auth=True
+                    )
+                    db.add(new_owner)
+                    
+                    # Log the purchase
+                    log = Log(
+                        user=str(user_id),
+                        action="garage_purchased",
+                        timestamp=int(datetime.utcnow().timestamp())
+                    )
+                    db.add(log)
+                    db.commit()
+                    
+                    await update.message.reply_text(
+                        "🎉 Поздравляем с покупкой гаража!\n"
+                        "Теперь вы владелец.",
+                        reply_markup=get_main_keyboard()
+                    )
+                else:
+                    await update.message.reply_text(
+                        f"❌ Ошибка при оплате: {response.error_message}",
+                        reply_markup=get_start_keyboard(True)
+                    )
+                    
+            except Exception as e:
+                logger.error(f"Purchase processing error: {str(e)}")
+                await update.message.reply_text(
+                    "❌ Произошла ошибка при обработке покупки.",
+                    reply_markup=get_start_keyboard(True)
+                )
+            finally:
+                # Clear the current iteration
+                user.current_itern = None
+                db.commit()
 
     async def handle_location(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id

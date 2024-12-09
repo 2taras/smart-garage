@@ -13,6 +13,7 @@ class User(Base):
     is_auth = Column(Boolean, default=False)
     current_itern = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
+    is_owner = Column(Boolean, default=False)
 
 class SystemConfig(Base):
     __tablename__ = 'system_config'

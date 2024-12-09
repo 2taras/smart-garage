@@ -15,20 +15,32 @@ export default function Home() {
   
   // Function to format state for display
   const formatState = (state: string): string => {
+    if (state == null) return "";
     return state.charAt(0).toUpperCase() + state.slice(1);
   };
 
   const [doorHeight, setDoorHeight] = useState(100); // Track door height percentage
 
-  // Update the getStatus function:
+  const getLogs = async () => {
+    try {
+      const response = await fetchWithAuth('/api/logs');
+      if (response) {
+        const data = await response.json();
+        setLogs(data);
+      }
+    } catch (error) {
+      console.error('Error fetching logs:', error);
+    }
+  };
+
   const getStatus = async () => {
     try {
-      const response = await fetchWithAuth('http://localhost:5000/api/status');
+      const response = await fetchWithAuth('/api/status');
       if (response) {
         const data = await response.json();
         setStatus(data);
         
-        if (!isAnimating) {
+        if (!isAnimating && (data.state == "closed" || data.state == "open")) {
           setDoorState(data.state);
           setDoorHeight(data.state === 'open' ? 10 : 100);
         }
@@ -52,7 +64,7 @@ export default function Home() {
       });
   
       const response = await fetchWithAuth(
-        `http://localhost:5000/api/garage/${action}`,
+        `/api/garage/${action}`,
         {
           method: 'POST',
           headers: {
@@ -102,21 +114,24 @@ export default function Home() {
   
   // Update the useEffect to include dependencies and add error handling
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-  
+    let statusInterval: NodeJS.Timeout;
+    let logsInterval: NodeJS.Timeout;
+
     if (isAuthenticated) {
-      getStatus(); // Initial status check
-      interval = setInterval(() => {
-        getStatus();
-      }, 1000);
+      // Initial fetch
+      getStatus();
+      getLogs();
+
+      // Set up intervals
+      statusInterval = setInterval(getStatus, 1000);
+      logsInterval = setInterval(getLogs, 5000); // Update logs every 5 seconds
     }
-  
+
     return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
+      if (statusInterval) clearInterval(statusInterval);
+      if (logsInterval) clearInterval(logsInterval);
     };
-  }, [isAuthenticated, isAnimating]); // Add dependencies
+  }, [isAuthenticated, isAnimating]);
   
   // Add this type for better type safety
   type DoorState = 'open' | 'closed' | 'opening' | 'closing';
@@ -158,8 +173,9 @@ export default function Home() {
         {/* Garage Frame */}
         <div className="absolute inset-0 bg-gray-200">
           {/* Garage Door */}
+          <div className="tenor-gif-embed h-full" data-postid="22656380" data-share-method="host" data-aspect-ratio="1" data-width="100%"><a href="https://tenor.com/view/cat-space-nyan-cat-gif-22656380">Cat Space GIF</a>from <a href="https://tenor.com/search/cat-gifs">Cat GIFs</a></div> <script type="text/javascript" async src="https://tenor.com/embed.js"></script>
           <div
-            className={`absolute inset-x-0 bg-gray-400 transition-all duration-7000 ease-linear
+            className={`absolute inset-x-0 bg-gray-400 transition-all duration-7000 ease-linear top-0 z-10
               ${doorState === 'closed' ? 'h-full' : 
                 doorState === 'open' ? 'h-[10%]' : 
                 doorState === 'opening' ? 'animate-door-opening' : 

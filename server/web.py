@@ -14,6 +14,11 @@ import json
 from pydantic import BaseModel
 from misc.garageapi import GarageAPI
 from misc.db import get_db, User, SystemConfig, Log
+from misc.bankapi import AsyncBankClient, PaymentRequest
+from misc.config_manager import ConfigManager
+from misc.utils import distance
+from misc.models import LocationData, LoginData, PurchaseData
+from pydantic import BaseModel, constr
 
 app = FastAPI()
 security = HTTPBearer()
@@ -31,57 +36,6 @@ app.add_middleware(
 GARAGE_LOCATION = json.loads(os.getenv("GARAGE_LOCATION"))
 JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key")
 JWT_ALGORITHM = "HS256"
-
-class LocationData(BaseModel):
-    latitude: float
-    longitude: float
-
-class LoginData(BaseModel):
-    password: str
-
-def distance(lat1: float, lon1: float, lat2: float, lon2: float, unit: str = "K") -> float:
-    if lat1 == lat2 and lon1 == lon2:
-        return 0
-    
-    theta = lon1 - lon2
-    dist = (math.sin(math.radians(lat1)) * math.sin(math.radians(lat2)) + 
-           math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * 
-           math.cos(math.radians(theta)))
-    dist = math.acos(dist)
-    dist = math.degrees(dist)
-    miles = dist * 60 * 1.1515
-    
-    return miles * 1.609344 if unit == "K" else miles * 0.8684 if unit == "N" else miles
-
-class ConfigManager:
-    @staticmethod
-    def get_value(db, key: str):
-        config = db.query(SystemConfig).filter_by(key=key).first()
-        return config.value if config else None
-
-    @staticmethod
-    def set_value(db, key: str, value: str):
-        config = db.query(SystemConfig).filter_by(key=key).first()
-        if config:
-            config.value = value
-        else:
-            config = SystemConfig(key=key, value=value)
-            db.add(config)
-        db.commit()
-
-    @staticmethod
-    def get_temp_password(db):
-        password = ConfigManager.get_value(db, 'temp_password')
-        if not password:
-            password = str(random.randint(1000, 9999))
-            ConfigManager.set_value(db, 'temp_password', password)
-        return password
-
-    @staticmethod
-    def reset_temp_password(db):
-        new_password = str(random.randint(1000, 9999))
-        ConfigManager.set_value(db, 'temp_password', new_password)
-        return new_password
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)):
     try:
@@ -116,6 +70,52 @@ async def get_status(_: dict = Depends(get_current_user)):
     try:
         status = await GarageAPI.get_status()
         return status
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/buy")
+async def buy_garage(purchase_data: PurchaseData):
+    db = next(get_db())
+    GARAGE_PRICE = float(os.getenv("GARAGE_PRICE", "100.0"))
+    
+    try:
+        payment = PaymentRequest(
+            amount=GARAGE_PRICE,
+            card_number=purchase_data.card_number,
+            description="Garage purchase via web"
+        )
+        
+        client = AsyncBankClient()
+        async with client as bank:
+            response = await bank.process_payment(payment)
+        
+        if response.status == "success":
+            # Remove all old users
+            db.query(User).delete()
+            db.commit()
+            
+            # Create new temporary password
+            temp_password = ConfigManager.reset_temp_password(db)
+            
+            # Log the purchase
+            log = Log(
+                user="web_purchase",
+                action="garage_purchased",
+                timestamp=int(datetime.utcnow().timestamp())
+            )
+            db.add(log)
+            db.commit()
+            
+            return {
+                "status": "success",
+                "password": temp_password
+            }
+        else:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Payment failed: {response.error_message}"
+            )
+            
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
