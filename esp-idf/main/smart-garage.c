@@ -35,9 +35,9 @@
 #define UPDATE_INTERVAL_MS      5000
 
 // Default WiFi and WebSocket configuration
-#define DEFAULT_WIFI_SSID       "SEPIFANSEV"
-#define DEFAULT_WIFI_PASS       "89262027736"
-#define DEFAULT_WS_URI         "ws://192.168.96.181:8000/ws"
+#define DEFAULT_WIFI_SSID       "Wokwi-GUEST"
+#define DEFAULT_WIFI_PASS       ""
+#define DEFAULT_WS_URI         "ws://dg.2taras.site/ws"
 
 typedef enum {
     GARAGE_CLOSED,
@@ -216,7 +216,6 @@ static void init_wifi(void) {
 
     wifi_config_t wifi_config = {
         .sta = {
-            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
         },
     };
     memcpy(wifi_config.sta.ssid, wifi_ssid, sizeof(wifi_config.sta.ssid));

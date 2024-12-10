@@ -1,0 +1,22 @@
+{
+    "version": 1,
+    "author": "Тарас Пирог",
+    "editor": "wokwi",
+    "parts": [
+      {
+        "type": "board-esp32-s3-devkitc-1",
+        "id": "esp",
+        "top": 29.91,
+        "left": 5.03,
+        "rotate": 180,
+        "attrs": { "builder": "esp-idf", "serialInterface": "USB_SERIAL_JTAG" }
+      },
+      { "type": "wokwi-servo", "id": "servo1", "top": 7.6, "left": 144, "attrs": {} },
+      { "type": "wokwi-dht22", "id": "dht1", "top": 134.7, "left": 205.8, "attrs": {} }
+    ],
+    "connections": [
+      [ "esp:5", "servo1:PWM", "green", [ "h28.8", "v-96.2" ] ],
+      [ "esp:3", "dht1:SDA", "green", [ "h67.2", "v76.8", "h67.1" ] ]
+    ],
+    "dependencies": {}
+  }

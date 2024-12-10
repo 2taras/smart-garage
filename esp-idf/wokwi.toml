@@ -1,0 +1,5 @@
+[wokwi]
+version = 1
+elf = "build/smart-garage.elf"
+firmware = "build/smart-garage.bin"
+gdbServerPort=3333

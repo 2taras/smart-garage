@@ -1,4 +1,5 @@
 from pydantic import BaseModel, constr
+from typing import Annotated
 
 class LocationData(BaseModel):
     latitude: float
@@ -7,5 +8,7 @@ class LocationData(BaseModel):
 class LoginData(BaseModel):
     password: str
 
+ConstrainedCardNumber = Annotated[str, {"pattern": r"^\d{16}$"}]
+
 class PurchaseData(BaseModel):
-    card_number: constr(regex=r'^\d{16}$')
+    card_number: ConstrainedCardNumber
