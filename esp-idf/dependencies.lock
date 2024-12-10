@@ -25,5 +25,5 @@ direct_dependencies:
 - idf
 - zorxx/dht
 manifest_hash: 791a01d016c390d77f58856f2ad18d0b6aab78b34356c33557ba2b4838bd5fe6
-target: esp32s3
+target: esp32s2
 version: 2.0.0

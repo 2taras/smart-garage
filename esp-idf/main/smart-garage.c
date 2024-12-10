@@ -35,9 +35,9 @@
 #define UPDATE_INTERVAL_MS      5000
 
 // Default WiFi and WebSocket configuration
-#define DEFAULT_WIFI_SSID       "Wokwi-GUEST"
-#define DEFAULT_WIFI_PASS       ""
-#define DEFAULT_WS_URI         "ws://dg.2taras.site/ws"
+#define DEFAULT_WIFI_SSID       "SEPIFANSEV"
+#define DEFAULT_WIFI_PASS       "89262027736"
+#define DEFAULT_WS_URI         "ws://garage.2taras.site/ws"
 
 typedef enum {
     GARAGE_CLOSED,
