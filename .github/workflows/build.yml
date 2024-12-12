@@ -7,10 +7,6 @@ on:
       - main
   workflow_dispatch:
 
-env:
-  UPDATER_PASS: ${{ secrets.UPDATER_PASS }}
-  DEPLOYMENT_NAME: garage-deploy
-
 permissions:
   contents: read
   packages: write
@@ -43,6 +39,3 @@ jobs:
       - name: Push Docker Image to GHCR
         run: |
           docker push ghcr.io/${{ github.repository_owner }}/${{ github.repository }}:latest
-
-      - name: Update on server
-        run: sleep 5 && curl https://updater.548b.ru/start_update -d "deployment_name=${DEPLOYMENT_NAME}&namespace=misis" -u "update:${UPDATER_PASS}"
